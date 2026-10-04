@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -7,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 // an unread response body pauses the HTTP/1 parser and the peer closes the
 // socket (nodejs/undici#5360, orca#8695). This applies to every Node process
 // we ship: Electron main, the CLI, and the SSH relay.
+// The app HTTP client uses the same global-fetch fallback on Node hosts.
 //
 // Each entry below maps an audited file to its expected number of matching
 // lines. Real call sites must consume or cancel the body on every path,
@@ -22,14 +24,21 @@ const AUDITED_GLOBAL_FETCH_LINES = new Map<string, number>([
   ['main/gitea/client.ts', 1],
   // Generated OpenCode claim source consumes JSON or cancels its body in finally.
   ['main/opencode/opencode-startup-prompt-source.ts', 1],
+  ['main/orca-profiles/profile-cloud-client.ts', 1],
   ['main/orca-profiles/profile-cloud-org-members-client.ts', 1],
   ['main/rate-limits/codex-fetcher.ts', 3],
   ['main/rate-limits/zcode-usage-fetcher.ts', 1],
+  ['main/runtime/agent-state-rules/agent-state-rules-live-update.ts', 1],
   ['main/runtime/push/push-gateway-client.ts', 1],
+  ['main/runtime/relay/relay-http-client.ts', 2],
   ['main/runtime/relay/relay-region-catalog-fetch.ts', 1],
+  // Measurement delegates to the catalog/probe consumers, which consume or cancel every body.
+  ['main/runtime/relay/relay-region-preference.ts', 3],
   ['main/runtime/relay/relay-region-probe.ts', 1],
   ['main/source-control/hosted-review-api-request.ts', 1],
   ['main/speech/openai-transcription-client.ts', 1],
+  // Downloads delegate to downloadVerifiedArchive, which consumes or cancels the body.
+  ['main/ssh/pinned-runtime-materializer.ts', 2],
   // Main HTTP port: one type declaration plus the Node fallback call. The fallback
   // returns the Response to its caller without inspecting it, so the consume/cancel
   // obligation stays with the caller — unchanged from when those callers used
@@ -59,7 +68,9 @@ const AUDITED_GLOBAL_FETCH_LINES = new Map<string, number>([
 // A line is a hit when it calls bare `fetch(` or touches `globalThis.fetch` /
 // `global.fetch` in any way (call, alias, fallback like `input.fetch ??
 // globalThis.fetch`). `typeof globalThis.fetch` type annotations are exempt.
-const GLOBAL_FETCH_LINE = /(^|[^.\w])fetch\(|(?<!typeof )\bglobal(This)?\.fetch\b/
+// Include app-client references passed as values, not just direct .fetch(...) calls.
+const GLOBAL_FETCH_LINE =
+  /(^|[^.\w])fetch\(|(?<!typeof )\bglobal(This)?\.fetch\b|\bgetMainHttpClient\s*\(\s*\)\s*\.\s*fetch\b/
 
 const SCANNED_ROOTS = ['main', 'cli', 'relay']
 
@@ -95,6 +106,31 @@ function globalFetchLineCounts(srcRoot: string): Map<string, number> {
 }
 
 describe('global fetch call-site audit (main, cli, relay)', () => {
+  it.each([
+    ['await fetch(url)', 1],
+    ['await globalThis.fetch(url)', 1],
+    ['const fetcher = global.fetch', 1],
+    ['await getMainHttpClient().fetch(url)', 1],
+    ['await (input.fetch ?? getMainHttpClient().fetch)(url)', 1],
+    ['const fetcher = getMainHttpClient().fetch', 1],
+    ['probeCatalog(getMainHttpClient().fetch)', 1],
+    ['const fetcher = getMainHttpClient ( ) . fetch', 1],
+    ['await net.fetch(url)', 0],
+    ['type Fetch = typeof globalThis.fetch', 0]
+  ])('counts Node-backed fetch usage in %s', (source, count) => {
+    const root = mkdtempSync(join(tmpdir(), 'orca-fetch-audit-'))
+    try {
+      for (const directory of ['main', 'cli', 'relay']) {
+        mkdirSync(join(root, directory))
+      }
+      writeFileSync(join(root, 'main', 'request.ts'), source)
+
+      expect([...globalFetchLineCounts(root)]).toEqual(count ? [['main/request.ts', count]] : [])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('keeps every global-fetch line audited with its expected count', () => {
     const found = globalFetchLineCounts(join(__dirname, '..'))
 
@@ -104,7 +140,7 @@ describe('global fetch call-site audit (main, cli, relay)', () => {
       .sort()
     expect(
       drifted,
-      'Global fetch (bare, globalThis.fetch, or global.fetch) uses undici, ' +
+      'Global fetch and the app HTTP client on Node hosts use undici, ' +
         'where an unread response body can crash the whole process (orca#8695). ' +
         'New or moved call sites must either use Electron net.fetch or consume/' +
         'cancel the response body on ALL paths (cancelUnreadResponseBody in ' +
