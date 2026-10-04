@@ -25,6 +25,7 @@ const PACKAGED_RUNTIME_PACKAGE_ROOTS = [
   'node-pty',
   'posthog-node',
   'proper-lockfile',
+  'proxy-agent',
   'qrcode',
   'ssh2',
   'tweetnacl',
