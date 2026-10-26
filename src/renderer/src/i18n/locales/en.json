@@ -238,6 +238,12 @@
         "title": "Warn when a Codex tab shares a server",
         "description": "Shows a notice on a Codex you started yourself when it shares a server with other tabs, because its agent status may be wrong."
       }
+    },
+    "network": {
+      "caCertificate": "Custom CA certificate (PEM)",
+      "caDescription": "Paste your corporate CA certificates, without private keys. Applies to Cloud sign-in, Relay, and other app integrations. Embedded browsing and terminal commands keep their own TLS settings.",
+      "ignoreSsl": "Ignore SSL certificate errors",
+      "ignoreSslDescription": "Disables certificate verification for these connections. This can expose your credentials to interception. Leave off when using a trusted CA certificate."
     }
   },
   "menu": {

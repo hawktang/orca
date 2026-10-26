@@ -1,4 +1,11 @@
-export type NetworkProxySettings = {
+export type NetworkProxyTlsSettings = {
+  /** Additional PEM CA certificates for Cloud, Relay, and app integrations. */
+  httpProxyCaCertificate?: string
+  /** Explicit certificate verification bypass; disabled by default. */
+  httpProxyIgnoreCertificateErrors?: boolean
+}
+
+export type NetworkProxySettings = NetworkProxyTlsSettings & {
   httpProxyUrl?: string | null
   httpProxyBypassRules?: string | null
 }

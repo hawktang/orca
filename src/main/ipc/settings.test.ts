@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { GlobalSettings } from '../../shared/global-settings-types'
+import { LOCAL_HTTPS_TEST_CERTIFICATE } from '../browser/browser-local-https-test-certificate'
 
 const {
   applyAppIconMock,
@@ -617,6 +618,66 @@ describe('registerSettingsHandlers', () => {
         ]
       },
       { notifyListeners: true, originWebContentsId: 1 }
+    )
+  })
+
+  it('validates and applies TLS-only proxy changes from settings IPC', async () => {
+    store.getSettings.mockReturnValue({ httpProxyIgnoreCertificateErrors: false })
+    const next = {
+      httpProxyCaCertificate: LOCAL_HTTPS_TEST_CERTIFICATE,
+      httpProxyIgnoreCertificateErrors: true
+    }
+    store.updateSettings.mockReturnValue(next)
+    registerSettingsHandlers(store as never)
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')![1]
+    await handler(settingsInvokeEvent, {
+      ...next,
+      httpProxyCaCertificate: ` ${LOCAL_HTTPS_TEST_CERTIFICATE} `
+    })
+    expect(store.updateSettings).toHaveBeenCalledWith(next, {
+      notifyListeners: true,
+      originWebContentsId: 1
+    })
+    expect(applyElectronProxySettingsMock).toHaveBeenCalledWith(next)
+  })
+
+  it('rejects invalid CA text without persisting it', async () => {
+    registerSettingsHandlers(store as never)
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')![1]
+    await expect(
+      handler(settingsInvokeEvent, { httpProxyCaCertificate: 'invalid PEM' })
+    ).rejects.toThrow(/certificate/i)
+    expect(store.updateSettings).not.toHaveBeenCalled()
+  })
+
+  it('reports a TLS application failure and retries the same saved setting', async () => {
+    const settings = { httpProxyIgnoreCertificateErrors: true }
+    store.getSettings
+      .mockReturnValueOnce({ httpProxyIgnoreCertificateErrors: false })
+      .mockReturnValue(settings)
+    store.updateSettings.mockReturnValue(settings)
+    applyElectronProxySettingsMock.mockRejectedValueOnce(new Error('internal details'))
+    registerSettingsHandlers(store as never)
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')![1]
+    await expect(handler(settingsInvokeEvent, settings)).rejects.toThrow(
+      'Could not apply network TLS settings. Try saving again.'
+    )
+    await expect(handler(settingsInvokeEvent, settings)).resolves.toEqual(settings)
+    expect(applyElectronProxySettingsMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not enable SSL bypass for a truthy non-boolean IPC value', async () => {
+    store.getSettings.mockReturnValue({ httpProxyIgnoreCertificateErrors: false })
+    store.updateSettings.mockReturnValue({ httpProxyIgnoreCertificateErrors: false })
+    registerSettingsHandlers(store as never)
+    const handler = handleMock.mock.calls.find((call) => call[0] === 'settings:set')![1]
+    await handler(settingsInvokeEvent, { httpProxyIgnoreCertificateErrors: 'true' })
+    expect(store.updateSettings).toHaveBeenCalledWith(
+      { httpProxyIgnoreCertificateErrors: false },
+      {
+        notifyListeners: true,
+        originWebContentsId: 1
+      }
     )
   })
 

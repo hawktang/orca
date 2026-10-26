@@ -14,6 +14,7 @@ import { getAdvancedNetworkSearchEntries } from './advanced-network-search'
 import { SearchableSetting } from './SearchableSetting'
 import { matchesSettingsSearch, normalizeSettingsSearchQuery } from './settings-search'
 import { translate } from '@/i18n/i18n'
+import { ProxyTlsSettingsFields } from './ProxyTlsSettingsFields'
 
 /** Open the proxy fields automatically when a search matches this section. */
 export function shouldOpenNetworkProxyConfig(searchQuery: string): boolean {
@@ -25,7 +26,12 @@ export function shouldOpenNetworkProxyConfig(searchQuery: string): boolean {
 
 /** A configured proxy should also reveal the fields, so users see the value. */
 export function hasConfiguredNetworkProxy(settings: GlobalSettings): boolean {
-  return Boolean(settings.httpProxyUrl?.trim() || settings.httpProxyBypassRules?.trim())
+  return Boolean(
+    settings.httpProxyUrl?.trim() ||
+    settings.httpProxyBypassRules?.trim() ||
+    settings.httpProxyCaCertificate?.trim() ||
+    settings.httpProxyIgnoreCertificateErrors
+  )
 }
 
 export type HttpProxyUrlDraftState = {
@@ -116,7 +122,7 @@ export function updateHttpProxyBypassRulesDraftState(
 
 type AdvancedNetworkSettingsSectionProps = {
   settings: GlobalSettings
-  updateSettings: (updates: Partial<GlobalSettings>) => void
+  updateSettings: (updates: Partial<GlobalSettings>) => void | Promise<void>
 }
 
 export function AdvancedNetworkSettingsSection({
@@ -201,6 +207,7 @@ export function AdvancedNetworkSettingsSection({
 
   return (
     <SearchableSetting
+      forceVisible={shouldOpenNetworkProxyConfig(searchQuery)}
       title={translate(
         'auto.components.settings.AdvancedNetworkSettingsSection.c46cdbbd4e',
         'Network'
@@ -328,6 +335,7 @@ export function AdvancedNetworkSettingsSection({
                 )}
               </p>
             </div>
+            <ProxyTlsSettingsFields settings={settings} updateSettings={updateSettings} />
           </div>
         </CollapsibleContent>
       </Collapsible>

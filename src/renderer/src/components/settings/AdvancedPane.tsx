@@ -10,6 +10,7 @@ import { SearchableSetting } from './SearchableSetting'
 import { SettingsSubsectionHeader, SettingsSwitch } from './SettingsFormControls'
 import { getAdvancedPaneSearchEntries, getAdvancedSearchEntry } from './advanced-search'
 import { translate } from '@/i18n/i18n'
+import { useAppStore } from '../../store'
 
 export { getAdvancedPaneSearchEntries }
 
@@ -19,6 +20,7 @@ type AdvancedPaneProps = {
 }
 
 export function AdvancedPane({ settings, updateSettings }: AdvancedPaneProps): React.JSX.Element {
+  const updateNetworkSettings = useAppStore((state) => state.updateSettingsOrThrow)
   const mountedRef = useMountedRef()
   const http1CompatibilityInitialRef = useRef(Boolean(settings.electronHttp1CompatibilityMode))
   const [http1CompatibilityRelaunching, setHttp1CompatibilityRelaunching] = useState(false)
@@ -145,7 +147,10 @@ export function AdvancedPane({ settings, updateSettings }: AdvancedPaneProps): R
             'App-level network routing for proxies and corporate environments.'
           )}
         />
-        <AdvancedNetworkSettingsSection settings={settings} updateSettings={updateSettings} />
+        <AdvancedNetworkSettingsSection
+          settings={settings}
+          updateSettings={updateNetworkSettings}
+        />
       </section>
     </div>
   )

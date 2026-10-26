@@ -196,6 +196,12 @@
         "restartRequired": "Redémarrage requis",
         "unavailable": "L'identité du navigateur n'est pas disponible."
       }
+    },
+    "network": {
+      "caCertificate": "Certificat CA personnalisé (PEM)",
+      "caDescription": "Collez les certificats CA de votre entreprise, sans clés privées. S’applique à la connexion Cloud, à Relay et aux autres intégrations de l’application. Le navigateur intégré et les commandes du terminal conservent leurs propres paramètres TLS.",
+      "ignoreSsl": "Ignorer les erreurs de certificat SSL",
+      "ignoreSslDescription": "Désactive la vérification des certificats pour ces connexions. Vos identifiants pourraient être interceptés. Laissez cette option désactivée si vous utilisez un certificat CA de confiance."
     }
   },
   "menu": {

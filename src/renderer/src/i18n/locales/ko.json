@@ -97,6 +97,12 @@
         "restartRequired": "다시 시작해야 함",
         "unavailable": "브라우저 ID를 사용할 수 없습니다."
       }
+    },
+    "network": {
+      "caCertificate": "사용자 지정 CA 인증서(PEM)",
+      "caDescription": "개인 키를 제외한 회사 CA 인증서를 붙여 넣으세요. Cloud 로그인, Relay 및 기타 앱 연동에 적용됩니다. 내장 브라우저와 터미널 명령은 자체 TLS 설정을 유지합니다.",
+      "ignoreSsl": "SSL 인증서 오류 무시",
+      "ignoreSslDescription": "이 연결의 인증서 검증을 비활성화합니다. 인증 정보가 가로채질 수 있습니다. 신뢰할 수 있는 CA 인증서를 사용하면 이 설정을 끄세요."
     }
   },
   "menu": {

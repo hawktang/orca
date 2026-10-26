@@ -71,8 +71,13 @@ function openSocket(url: string, options: ClientOptions = {}) {
   return socket
 }
 
-async function connectProxy(port: number) {
-  const server = createServer()
+async function connectProxy(port: number, tls = false) {
+  const server = tls
+    ? createHttpsServer({
+        key: LOCAL_HTTPS_TEST_PRIVATE_KEY,
+        cert: LOCAL_HTTPS_TEST_CERTIFICATE
+      })
+    : createServer()
   const sockets = new Set<Socket>()
   const requests: { target: string | undefined; authorization: string | undefined }[] = []
   server.on('connection', (socket) => {
@@ -109,6 +114,86 @@ async function connectProxy(port: number) {
 }
 
 describe('app proxy WebSockets', () => {
+  it.each(['CA certificate', 'ignore errors'])(
+    'applies %s to both HTTPS proxy and WSS destination',
+    async (mode) => {
+      const relay = await relayServer(true)
+      const proxy = await connectProxy(relay.port, true)
+      const session = proxySession(`HTTPS ${proxy.address}`)
+      await expect(once(openSocket(relay.url), 'open')).rejects.toThrow()
+      expect(proxy.requests).toEqual([])
+      await applyProxySettingsToSession(
+        session,
+        {
+          httpProxyUrl: `https://${proxy.address}`,
+          ...(mode === 'CA certificate'
+            ? { httpProxyCaCertificate: LOCAL_HTTPS_TEST_CERTIFICATE }
+            : { httpProxyIgnoreCertificateErrors: true })
+        },
+        { env: {} }
+      )
+      await once(openSocket(relay.url), 'open')
+      expect(relay.connections()).toBe(1)
+      expect(proxy.requests).toHaveLength(1)
+    }
+  )
+
+  it('keeps hostname verification with a custom CA', async () => {
+    const relay = await relayServer(true)
+    const proxy = await connectProxy(relay.port)
+    const session = proxySession(`PROXY ${proxy.address}`)
+    await applyProxySettingsToSession(
+      session,
+      {
+        httpProxyUrl: `http://${proxy.address}`,
+        httpProxyCaCertificate: LOCAL_HTTPS_TEST_CERTIFICATE
+      },
+      { env: {} }
+    )
+    await expect(
+      once(openSocket(`wss://wrong-name.invalid:${relay.port}`), 'open')
+    ).rejects.toThrow(/altnames|hostname/i)
+    expect(relay.connections()).toBe(0)
+  })
+
+  it.each([
+    { httpProxyCaCertificate: LOCAL_HTTPS_TEST_CERTIFICATE },
+    { httpProxyIgnoreCertificateErrors: true }
+  ])('uses the app TLS settings for Relay: %j', async (tlsSettings) => {
+    const relay = await relayServer(true)
+    const proxy = await connectProxy(relay.port)
+    const session = proxySession(`PROXY ${proxy.address}`)
+    await applyProxySettingsToSession(
+      session,
+      { httpProxyUrl: `http://${proxy.address}`, ...tlsSettings },
+      { env: {} }
+    )
+    await once(openSocket(`wss://localhost:${relay.port}`), 'open')
+    expect(relay.connections()).toBe(1)
+    expect(proxy.requests).toHaveLength(1)
+  })
+
+  it('revokes SSL bypass on existing and new Relay connections', async () => {
+    const relay = await relayServer(true)
+    const proxy = await connectProxy(relay.port)
+    const session = proxySession(`PROXY ${proxy.address}`)
+    const settings = {
+      httpProxyUrl: `http://${proxy.address}`,
+      httpProxyIgnoreCertificateErrors: true
+    }
+    await applyProxySettingsToSession(session, settings, { env: {} })
+    const socket = openSocket(`wss://localhost:${relay.port}`)
+    await once(socket, 'open')
+    await applyProxySettingsToSession(
+      session,
+      { ...settings, httpProxyIgnoreCertificateErrors: false },
+      { env: {} }
+    )
+    await vi.waitFor(() => expect(socket.readyState).toBe(socket.CLOSED))
+    await expect(once(openSocket(`wss://localhost:${relay.port}`), 'open')).rejects.toThrow()
+    expect(relay.connections()).toBe(1)
+  })
+
   it.each(['SOCKS5', 'PROXY'])('preserves TLS verification through %s', async (route) => {
     const relay = await relayServer(true)
     const hosts = new Set<string>()
@@ -139,10 +224,7 @@ describe('app proxy WebSockets', () => {
     const url = `wss://localhost:${relay.port}`
     await expect(once(openSocket(url), 'open')).rejects.toThrow()
     expect(relay.connections()).toBe(0)
-    await once(
-      openSocket(url, { ca: LOCAL_HTTPS_TEST_CERTIFICATE }),
-      'open'
-    )
+    await once(openSocket(url, { ca: LOCAL_HTTPS_TEST_CERTIFICATE }), 'open')
     expect(relay.connections()).toBe(1)
     if (route === 'SOCKS5') {
       expect(hosts).toEqual(new Set(['localhost']))

@@ -14,9 +14,11 @@ import {
   type ElectronProxyCredentials
 } from './electron-proxy-credentials'
 import { runBoundedProxyApplication } from './bounded-proxy-application'
-import { closeProxySessionWebSockets } from './proxy-session-websockets'
+import { closeProxySessionConnections } from './proxy-session-connections'
 import { defaultProxySession, type ProxySession } from './electron-default-proxy-session'
-import { resolveProxyPolicyWithoutSession, type ProxyApplyResult } from './proxy-policy-resolution'
+import { proxyMemoKey, resolveProxyPolicyWithoutSession } from './proxy-policy-resolution'
+import type { ProxyApplyResult } from './proxy-policy-resolution'
+import { applyProxyTlsSettings, resetProxyTlsSettingsForTests } from './proxy-tls-settings'
 
 export { setDefaultProxySessionResolver } from './electron-default-proxy-session'
 export type { ProxyApplyResult } from './proxy-policy-resolution'
@@ -32,20 +34,16 @@ type SessionProxyApplicationState = {
 }
 let sessionProxyApplications = new WeakMap<ProxySession, SessionProxyApplicationState>()
 
-function proxyMemoKey(result: ProxyApplyResult): string {
-  return result.source === 'settings' || result.source === 'env'
-    ? `${result.source}\0${result.proxyRules}\0${result.proxyBypassRules ?? ''}`
-    : result.source
-}
-
 export function resetProxyApplicationForTests(): void {
   sessionProxyApplications = new WeakMap()
   resetElectronProxyCredentialsForTests()
+  resetProxyTlsSettingsForTests()
 }
 
 export function resetSessionProxyApplicationForTests(proxySession: ProxySession): void {
   sessionProxyApplications.delete(proxySession)
   clearElectronProxyCredentialsForSession(proxySession)
+  resetProxyTlsSettingsForTests(proxySession)
 }
 
 export function clearProxySessionCredentials(proxySession: ProxySession): void {
@@ -172,9 +170,10 @@ export function applyProxySettingsToSession(
   settings: NetworkProxySettings,
   options: { env?: Record<string, string | undefined>; probeUrl?: string } = {}
 ): Promise<ProxyApplyResult> {
-  return enqueueSessionProxyApplication(proxySession, (state) =>
-    resolveAndApplySessionProxy(proxySession, state, settings, options)
-  )
+  return enqueueSessionProxyApplication(proxySession, async (state) => {
+    await applyProxyTlsSettings(proxySession, settings)
+    return resolveAndApplySessionProxy(proxySession, state, settings, options)
+  })
 }
 
 async function resolveAndApplySessionProxy(
@@ -246,7 +245,7 @@ async function releaseSessionProxyPin(
   if (state.appliedKey === null) {
     return
   }
-  closeProxySessionWebSockets(proxySession)
+  closeProxySessionConnections(proxySession)
   await proxySession.setProxy({ mode: 'system' })
   // Why: keep the pin marker until stale pooled connections are closed so a retry cannot skip them.
   state.settledKey = null
@@ -270,7 +269,7 @@ async function applySessionProxyResult(
   ) {
     return result
   }
-  closeProxySessionWebSockets(proxySession)
+  closeProxySessionConnections(proxySession)
   await proxySession.setProxy({
     mode: 'fixed_servers',
     proxyRules: result.proxyRules,
@@ -321,8 +320,5 @@ export function applyElectronProxySettings(
   if (!proxySession) {
     return Promise.resolve(resolveProxyPolicyWithoutSession(settings, options.env ?? process.env))
   }
-  return applyProxySettingsToSession(proxySession, settings, {
-    env: options.env,
-    probeUrl: options.probeUrl
-  })
+  return applyProxySettingsToSession(proxySession, settings, options)
 }

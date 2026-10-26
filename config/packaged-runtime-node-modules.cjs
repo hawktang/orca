@@ -23,6 +23,7 @@ const PACKAGED_RUNTIME_PACKAGE_ROOTS = [
   'i18next',
   'jsonc-parser',
   'node-pty',
+  'node-fetch',
   'posthog-node',
   'proper-lockfile',
   'proxy-agent',

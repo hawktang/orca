@@ -97,6 +97,12 @@
         "restartRequired": "需要重新启动",
         "unavailable": "浏览器身份不可用。"
       }
+    },
+    "network": {
+      "caCertificate": "自定义 CA 证书（PEM）",
+      "caDescription": "粘贴企业 CA 证书，请勿包含私钥。适用于 Cloud 登录、Relay 和其他应用集成。内嵌浏览器与终端命令保留各自的 TLS 设置。",
+      "ignoreSsl": "忽略 SSL 证书错误",
+      "ignoreSslDescription": "禁用这些连接的证书验证，可能导致凭据被截获。使用受信任的 CA 证书时请保持关闭。"
     }
   },
   "menu": {

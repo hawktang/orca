@@ -97,6 +97,12 @@
         "restartRequired": "再起動が必要です",
         "unavailable": "ブラウザ ID が利用できません。"
       }
+    },
+    "network": {
+      "caCertificate": "カスタム CA 証明書（PEM）",
+      "caDescription": "秘密鍵を含めずに、企業の CA 証明書を貼り付けてください。Cloud ログイン、Relay、その他のアプリ連携に適用されます。組み込みブラウザーとターミナルコマンドはそれぞれの TLS 設定を使用します。",
+      "ignoreSsl": "SSL 証明書エラーを無視",
+      "ignoreSslDescription": "これらの接続の証明書検証を無効にします。認証情報が傍受されるおそれがあります。信頼された CA 証明書を使用する場合はオフにしてください。"
     }
   },
   "menu": {

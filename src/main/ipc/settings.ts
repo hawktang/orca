@@ -15,6 +15,7 @@ import { applyAgentStatusHooksEnabled } from '../agent-hooks/managed-agent-hook-
 import { isAgentStatusHooksEnabledForAgent } from '../../shared/agent-status-hooks-setting'
 import { recordManagedHookInstallFailure } from '../agent-hooks/install-telemetry'
 import { applyElectronProxySettings } from '../network/proxy-settings'
+import { sanitizeProxyTlsSettingsUpdate } from '../network/proxy-tls-settings'
 import { applyBrowserSessionProxies } from '../browser/browser-session-proxy'
 import { browserSessionRegistry } from '../browser/browser-session-registry'
 import { normalizeProxyBypassRules, normalizeProxyUrl } from '../../shared/network-proxy'
@@ -160,6 +161,7 @@ export function registerSettingsHandlers(
     if ('httpProxyBypassRules' in args) {
       sanitizedArgs.httpProxyBypassRules = normalizeProxyBypassRules(args.httpProxyBypassRules)
     }
+    Object.assign(sanitizedArgs, sanitizeProxyTlsSettingsUpdate(args))
     if ('appIcon' in args) {
       sanitizedArgs.appIcon = normalizeAppIconId(args.appIcon)
     }
@@ -206,13 +208,15 @@ export function registerSettingsHandlers(
       ('httpProxyUrl' in sanitizedArgs && before.httpProxyUrl !== result.httpProxyUrl) ||
       ('httpProxyBypassRules' in sanitizedArgs &&
         before.httpProxyBypassRules !== result.httpProxyBypassRules)
-    if (proxySettingsChanged) {
+    const tlsSettingsUpdated =
+      'httpProxyCaCertificate' in sanitizedArgs ||
+      'httpProxyIgnoreCertificateErrors' in sanitizedArgs
+    if (proxySettingsChanged || tlsSettingsUpdated) {
       // Start both authorities before yielding so requests cannot enter between their barriers.
       const defaultSessionApply = applyElectronProxySettings(result)
-      const browserSessionsApply = applyBrowserSessionProxies(
-        browserSessionRegistry.listProfiles(),
-        result
-      )
+      const browserSessionsApply = proxySettingsChanged
+        ? applyBrowserSessionProxies(browserSessionRegistry.listProfiles(), result)
+        : Promise.resolve()
       const [defaultSessionResult, browserSessionsResult] = await Promise.allSettled([
         defaultSessionApply,
         browserSessionsApply
@@ -222,6 +226,9 @@ export function registerSettingsHandlers(
       }
       if (browserSessionsResult.status === 'rejected') {
         console.warn('[settings] failed to apply network proxy settings to browser sessions')
+      }
+      if (defaultSessionResult.status === 'rejected' && tlsSettingsUpdated) {
+        throw new Error('Could not apply network TLS settings. Try saving again.')
       }
     }
     if (
